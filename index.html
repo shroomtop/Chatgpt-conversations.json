@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shroomtop420’s ChatGPT Data Export Manager + Galaxy (No Tree)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- 
+    1) Three.js & OrbitControls (UMD versions)
+    Ensures THREE.OrbitControls is available in the global scope.
+    Using a pinned older version so "THREE.OrbitControls" is recognized.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.137.5/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.137.5/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- 2) Chart.js for bar chart visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+t>
+  <!-- 3) html2canvas for exporting visualizations as PNG -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <!-- 4) Google Font for ChatGPT-like styling -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap">
+
+  <style>
+    /* ============== RESET & GLOBAL ============== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: "Poppins", sans-serif;
+      background: linear-gradient(120deg, #2b2d42, #8d99ae);
+      color: #e3e3e3;
+      overflow: hidden; /* The entire page is pinned */
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      text-align: center;
+      padding: 0.75rem;
+      background: rgba(0,0,0,0.25);
+      backdrop-filter: blur(3px);
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      margin-bottom: 0.3rem;
+      color: #fff;
+    }
+    header p {
+      font-size: 0.9rem;
+      color: #ccc;
+    }
+    footer {
+      text-align: center;
+      color: #ccc;
+      font-size: 0.8rem;
+      padding: 0.5rem 0;
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(3px);
+      flex-shrink: 0;
+    }
+
+    /* ============== MAIN LAYOUT WRAPPER ============== */
+    .main-wrapper {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ============== SIDEBAR ============== */
+    .sidebar {
+      width: 270px;
+      min-width: 200px;
+      background: #202123;
+      padding: 10px;
+      overflow-y: auto; /* Scroll within sidebar */
+      transition: width 0.3s;
+      flex-shrink: 0;
+    }
+    .sidebar.collapsed {
+      width: 60px;
+    }
+    .collapse-btn {
+      background: #444;
+      color: #fff;
+      border: none;
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .sidebar h2 {
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+    .sidebar .file-input-label {
+      display: block;
+      cursor: pointer;
+      margin-bottom: 12px;
+      color: #fff;
+      font-weight: 500;
+    }
+    .sidebar input[type="file"] {
+      display: none;
+    }
+
+    #searchBar {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      border: none;
+      outline: none;
+      font-size: 14px;
+    }
+    .conversation-list {
+      list-style: none;
+      padding: 0;
+    }
+    .conversation-list li {
+      background: #343541;
+      margin-bottom: 5px;
+      padding: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .conversation-list li:hover {
+      background: #4a4e56;
+    }
+    .conversation-list li.selected {
+      background: #4a4e56;
+      box-shadow: inset 0 0 5px rgba(255,255,255,0.2);
+    }
+    .conversation-list button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: none;
+      border-radius: 5px;
+      background: #097aed;
+      color: #fff;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    /* ============== CHAT AREA CONTAINER ============== */
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ============== TAB BAR ============== */
+    .tab-bar {
+      display: flex;
+      background: #202123;
+      border-bottom: 1px solid #343541;
+      flex-shrink: 0;
+    }
+    .tab-bar button {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #e3e3e3;
+      transition: background 0.2s;
+    }
+    .tab-bar button.active {
+      background: #343541;
+      font-weight: 500;
+    }
+
+    /* 
+       Each tab content is a flex column 
+       So we can place a scrollable child inside 
+    */
+    .tab-content {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden; /* We'll place a .scrollable-content inside if needed */
+      padding: 10px;
+      position: relative;
+    }
+    .scrollable-content {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* ============== CHAT AREA (Glassmorphism) ============== */
+    .chat-area {
+      position: relative;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      margin: 10px;
+      padding: 10px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .chat-area::before {
+      content: "";
+      position: absolute;
+      top: -2px; left: -2px; right: -2px; bottom: -2px;
+      border-radius: 18px;
+      background: linear-gradient(90deg,
+        #ff6b6b,
+        #fbc531,
+        #4cd137,
+        #00a8ff,
+        #9c88ff,
+        #ff6b6b
+      );
+      background-size: 400%;
+      z-index: -1;
+      animation: rainbowBorder 8s linear infinite;
+      opacity: 0.6;
+    }
+    @keyframes rainbowBorder {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .conv-title {
+      text-align: center;
+      margin-bottom: 10px;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.3);
+      padding-bottom: 5px;
+    }
+
+    /* ============== MESSAGES (ChatGPT Style) ============== */
+    .message {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: flex-start;
+    }
+    .message.outgoing {
+      justify-content: flex-end;
+    }
+    .message .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    .message .bubble {
+      background: #3b3e47;
+      padding: 10px 12px;
+      border-radius: 6px;
+      max-width: 75%;
+      line-height: 1.4;
+      font-size: 0.95rem;
+      color: #fff;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .message.outgoing .bubble {
+      background: #097aed;
+    }
+
+    /* ============== EXPORT + MISC BUTTONS ============== */
+    .chat-actions {
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(4px);
+      padding: 10px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .chat-actions input {
+      width: 220px;
+      background: #ddd;
+      color: #333;
+      border: none;
+      border-radius: 4px;
+      outline: none;
+      padding: 7px 10px;
+      font-size: 14px;
+    }
+    .chat-actions button {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .chat-actions .export-btn {
+      background: #ff5252;
+      color: #fff;
+    }
+    .chat-actions .clear-btn {
+      background: #2ec4b6;
+      color: #fff;
+    }
+    .chat-actions .stats-btn {
+      background: #333;
+      color: #fff;
+    }
+
+    /* ============== GALAXY TAB STYLES ============== */
+    #threeContainer {
+      width: 100%;
+      height: 600px;
+      background: #000;
+      position: relative;
+    }
+    #infoPanel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+      pointer-events: none;
+      display: none;
+      max-width: 300px;
+    }
+
+    /* Galaxy Modal */
+    #galaxyModal {
+      display: none; 
+      position: fixed; 
+      top: 0; left: 0; right: 0; bottom: 0; 
+      background: rgba(0,0,0,0.8);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    #galaxyModalContent {
+      background: #222;
+      padding: 20px;
+      max-width: 80%;
+      max-height: 80%;
+      overflow-y: auto;
+      border-radius: 6px;
+      color: #fff;
+    }
+    #galaxyModalContent h2 {
+      margin-bottom: 10px;
+      font-size: 1.2rem;
+    }
+    .closeGalaxyModal {
+      background: #ff5252;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      float: right;
+      margin-top: -10px;
+      margin-right: -10px;
+    }
+
+    /* ============== RESPONSIVE ADJUSTMENTS ============== */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 200px;
+        font-size: 14px;
+      }
+      .chat-actions {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      .chat-actions input {
+        width: 100%;
+      }
+      #threeContainer {
+        height: 400px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Shroomtop420’s ChatGPT Data Export Manager</h1>
+    <p>Load your <strong>conversations.json</strong>, pick a conversation, or explore the Galaxy tab!</p>
+  </header>
+
+  <div class="main-wrapper">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+      <button class="collapse-btn" onclick="toggleSidebar()">⮘ Collapse Sidebar</button>
+
+      <label class="file-input-label">
+        <span>➕ Load conversations.json</span>
+        <input type="file" id="fileInput" accept=".json" />
+      </label>
+      <input type="text" id="searchBar" placeholder="Search conversation title..." onkeyup="filterConversationList()" />
+      <h2>Conversations</h2>
+      <ul class="conversation-list" id="conversationList"></ul>
+    </div>
+
+    <!-- CHAT AREA with Tabs -->
+    <div class="chat-container">
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <button class="tab active" onclick="showTab('chat')">Chat</button>
+        <button class="tab" onclick="showTab('visualizer')">Visualizer</button>
+        <!-- Tree removed -->
+        <button class="tab" onclick="showTab('snippets')">Snippets</button>
+        <button class="tab" onclick="showTab('galaxy')">Galaxy</button>
+      </div>
+
+      <!-- CHAT TAB -->
+      <div id="chatTab" class="tab-content" style="display: flex;">
+        <div class="scrollable-content">
+          <div class="chat-area">
+            <div class="chat-messages" id="chatMessages"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VISUALIZER TAB -->
+      <div id="visualizerTab" class="tab-content">
+        <div class="scrollable-content">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Word Cloud & Frequency</h2>
+            <button onclick="exportVisualizerAsPNG()" style="background:#2ec4b6; color:#fff; padding:6px 12px; border:none; border-radius:4px;">
+              Export Visual
+            </button>
+          </div>
+          <div id="visualizerPanel" style="margin-top:10px;">
+            <h3>Word Cloud</h3>
+            <div id="wordCloud" style="margin-bottom:15px; border:1px solid #444; min-height:200px; padding:8px;"></div>
+            <h3>Frequency Analysis</h3>
+            <div id="frequencyAnalysis" style="margin-bottom:15px; border:1px solid #444; min-height:100px; padding:8px;"></div>
+            <h3>Bar Chart</h3>
+            <canvas id="barChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- TREE TAB REMOVED -->
+
+      <!-- SNIPPETS TAB -->
+      <div id="snippetsTab" class="tab-content">
+        <div class="scrollable-content">
+          <h2>Chat Snippet Library</h2>
+          <form id="snippetForm" onsubmit="saveSnippet(event)">
+            <input type="text" id="snippetTitle" placeholder="Snippet Title" required 
+                   style="width: 100%; padding: 8px; margin-bottom: 8px; border-radius: 4px; border: none;">
+            <textarea id="snippetContent" placeholder="Snippet Content" required 
+                      style="width: 100%; padding: 8px; margin-bottom: 8px; border-radius: 4px; border: none;" rows="4"></textarea>
+            <button type="submit" style="padding: 8px 12px; border: none; border-radius: 4px; background: #2ec4b6; color: #fff; cursor: pointer;">
+              Save Snippet
+            </button>
+          </form>
+          <div id="snippetList"></div>
+        </div>
+      </div>
+
+      <!-- GALAXY TAB -->
+      <div id="galaxyTab" class="tab-content">
+        <div class="scrollable-content">
+          <div id="threeContainer">
+            <div id="infoPanel"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export / Clear / Stats Bar (Chat Only) -->
+      <div class="chat-actions" id="chatActions">
+        <input type="text" id="exportFilename" placeholder="conversation.txt" />
+        <button class="export-btn" onclick="exportCurrentConversation()">Export</button>
+        <button class="clear-btn" onclick="attemptClearChat()">Clear</button>
+        <button class="stats-btn" onclick="showStats()">Stats</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    © 2025 Shroomtop420. All rights reserved.
+  </footer>
+
+  <!-- Galaxy Modal for full conversation -->
+  <div id="galaxyModal">
+    <div id="galaxyModalContent">
+      <button class="closeGalaxyModal" onclick="closeGalaxyModal()">×</button>
+      <h2 id="galaxyModalTitle">Conversation</h2>
+      <div id="galaxyModalBody" style="max-height:60vh; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <script>
+    /* ==============================
+       GLOBALS, SIDEBAR, & FILE LOADING
+       ============================== */
+    let conversationData=[];
+    let currentConversationDisplayList=[];
+    let currentMessages=[];
+    let currentConversationTitle="";
+    let selectedConversationMapping=null;
+
+    let pageSize=50;
+    let currentPage=0;
+    let activeTab="chat";
+
+    // Collapsible sidebar
+    let sidebarCollapsed=false;
+    function toggleSidebar(){
+      const sb=document.getElementById("sidebar");
+      sidebarCollapsed=!sidebarCollapsed;
+      sb.classList.toggle("collapsed",sidebarCollapsed);
+    }
+
+    // File loading
+    const fileInput=document.getElementById("fileInput");
+    fileInput.addEventListener("change",(e)=>{
+      const file=e.target.files[0];
+      if(!file){
+        alert("No file selected.");
+        return;
+      }
+      const reader=new FileReader();
+      reader.onload=function(ev){
+        try{
+          const jsonData=JSON.parse(ev.target.result);
+          if(!Array.isArray(jsonData)){
+            alert("Expected a top-level JSON array of conversations.");
+            return;
+          }
+          conversationData=jsonData;
+          currentConversationDisplayList=conversationData;
+          populateConversationList(conversationData,true);
+          alert(`Loaded ${jsonData.length} conversation(s).`);
+        }catch(err){
+          alert("Error parsing JSON:\n"+err.message);
+        }
+      };
+      reader.onerror=()=>alert("Error reading file.");
+      reader.readAsText(file);
+    });
+
+    /* Populate conversation list with pagination */
+    function populateConversationList(convs,reset=true){
+      if(reset){
+        conversationList.innerHTML="";
+        currentPage=0;
+      }
+      const start=currentPage*pageSize;
+      const end=start+pageSize;
+      const slice=convs.slice(start,end);
+
+      slice.forEach((conv, idx)=>{
+        const li=document.createElement("li");
+        li.textContent=`#${start+idx+1} — ${conv.title||"Untitled Conversation"}`;
+        li.onclick=()=>selectConversation(start+idx,li);
+        conversationList.appendChild(li);
+      });
+
+      if(end<convs.length){
+        let loadMoreBtn=document.createElement("button");
+        loadMoreBtn.textContent="Load More";
+        loadMoreBtn.onclick=()=>{
+          currentPage++;
+          loadMoreBtn.remove();
+          populateConversationList(convs,false);
+        };
+        conversationList.appendChild(loadMoreBtn);
+      }
+    }
+
+    function filterConversationList(){
+      const query=document.getElementById("searchBar").value.toLowerCase();
+      if(query){
+        currentConversationDisplayList=conversationData.filter(conv=>
+          (conv.title||"untitled conversation").toLowerCase().includes(query)
+        );
+      }else{
+        currentConversationDisplayList=conversationData;
+      }
+      populateConversationList(currentConversationDisplayList,true);
+    }
+
+    const conversationList=document.getElementById("conversationList");
+    let selectedLi=null;
+    function selectConversation(index,liElement){
+      if(selectedLi) selectedLi.classList.remove("selected");
+      liElement.classList.add("selected");
+      selectedLi=liElement;
+
+      const convObj=currentConversationDisplayList[index];
+      currentConversationTitle=convObj.title||`Conversation #${index+1}`;
+      selectedConversationMapping=convObj.mapping;
+      currentMessages=gatherMessages(convObj.mapping);
+
+      // Auto refresh the active tab
+      if(activeTab==="chat") renderMessages();
+      else if(activeTab==="visualizer") updateVisualizer();
+      else if(activeTab==="snippets") updateSnippets();
+      else if(activeTab==="galaxy") updateGalaxy();
+    }
+
+    function gatherMessages(mapping){
+      if(!mapping||typeof mapping!=="object") return[];
+      const rootIds=Object.keys(mapping).filter(k=>mapping[k]?.parent===null);
+      const visited=new Set();
+      const msgs=[];
+
+      rootIds.forEach(rootId=>{
+        const queue=[rootId];
+        while(queue.length){
+          const currentId=queue.shift();
+          if(visited.has(currentId)) continue;
+          visited.add(currentId);
+
+          const node=mapping[currentId];
+          if(!node) continue;
+          if(node.message) msgs.push(node.message);
+
+          if(Array.isArray(node.children)){
+            node.children.forEach(childId=>{
+              if(!visited.has(childId)) queue.push(childId);
+            });
+          }
+        }
+      });
+      return msgs;
+    }
+
+    /* ==============================
+       TAB FUNCTIONALITY & RENDER
+       ============================== */
+    function showTab(tabName){
+      activeTab=tabName;
+      const tabs=document.querySelectorAll(".tab-content");
+      tabs.forEach(tab=>{
+        tab.style.display=(tab.id===tabName+"Tab")?"flex":"none";
+      });
+      const tabButtons=document.querySelectorAll(".tab-bar button");
+      tabButtons.forEach(btn=>{
+        btn.classList.remove("active");
+        if(btn.textContent.toLowerCase()===tabName){
+          btn.classList.add("active");
+        }
+      });
+      // Chat actions only on Chat tab
+      document.getElementById("chatActions").style.display=(tabName==="chat")?"flex":"none";
+
+      if(tabName==="chat") renderMessages();
+      else if(tabName==="visualizer") updateVisualizer();
+      else if(tabName==="snippets") updateSnippets();
+      else if(tabName==="galaxy") updateGalaxy();
+    }
+
+    /* CHAT RENDER */
+    function renderMessages(){
+      const chatMessages=document.getElementById("chatMessages");
+      chatMessages.innerHTML="";
+
+      const titleDiv=document.createElement("div");
+      titleDiv.className="conv-title";
+      titleDiv.textContent=currentConversationTitle;
+      chatMessages.appendChild(titleDiv);
+
+      currentMessages.forEach(msg=>{
+        const role=msg.author?.role||"unknown";
+        const content=(msg.content?.parts||[]).join(" ");
+
+        const msgDiv=document.createElement("div");
+        msgDiv.classList.add("message");
+        if(role.toLowerCase()==="user"){
+          msgDiv.classList.add("outgoing");
+        }
+
+        const img=document.createElement("img");
+        img.className="avatar";
+        if(role.toLowerCase()==="user") img.src="https://i.imgur.com/BnB6nRk.png";
+        else if(role.toLowerCase()==="assistant") img.src="https://i.imgur.com/m5gaCf0.png";
+        else img.src="https://i.imgur.com/3WTPX08.png"; 
+
+        const bubble=document.createElement("div");
+        bubble.className="bubble";
+        bubble.textContent=content||"[No content]";
+
+        msgDiv.appendChild(img);
+        msgDiv.appendChild(bubble);
+        chatMessages.appendChild(msgDiv);
+      });
+      chatMessages.scrollTop=chatMessages.scrollHeight;
+    }
+
+    /* CLEAR & EXPORT & STATS */
+    function attemptClearChat(){
+      clearChat();
+    }
+    function clearChat(){
+      document.getElementById("chatMessages").innerHTML="";
+      currentMessages=[];
+      currentConversationTitle="";
+      if(selectedLi) selectedLi.classList.remove("selected");
+      selectedLi=null;
+    }
+    function exportCurrentConversation(){
+      if(!currentMessages.length){
+        alert("No conversation selected or empty conversation.");
+        return;
+      }
+      let filename=document.getElementById("exportFilename").value.trim();
+      if(!filename) filename="conversation.txt";
+      if(!filename.includes(".")) filename+=".txt";
+
+      let exportContent=`Title: ${currentConversationTitle}\n\n`;
+      currentMessages.forEach((m,i)=>{
+        const role=m.author?.role||"unknown";
+        const content=(m.content?.parts||[]).join(" ");
+        exportContent+=`#${i+1} [${role.toUpperCase()}]:\n${content}\n\n`;
+      });
+
+      const blob=new Blob([exportContent],{type:"text/plain"});
+      const link=document.createElement("a");
+      link.href=URL.createObjectURL(blob);
+      link.download=filename;
+      link.click();
+    }
+    function showStats(){
+      const total=conversationData.length;
+      const msgCount=currentMessages.length;
+      alert(`Total: ${total}\nMessages in current: ${msgCount}`);
+    }
+
+    /* ==============================
+       VISUALIZER TAB
+       ============================== */
+    function updateVisualizer(){
+      let text="";
+      currentMessages.forEach(msg=>{
+        const c=(msg.content?.parts||[]).join(" ");
+        text+=" "+c;
+      });
+      let words=text.toLowerCase().match(/\b\w+\b/g)||[];
+      let freq={};
+      words.forEach(w=>{
+        freq[w]=(freq[w]||0)+1;
+      });
+      const stopWords=["the","and","to","a","of","in","i","it","is","that","for","you","on","with","this","but","are","not"];
+      stopWords.forEach(s=>{delete freq[s];});
+
+      // Word Cloud
+      const wordCloudDiv=document.getElementById("wordCloud");
+      wordCloudDiv.innerHTML="";
+      for(let w in freq){
+        const span=document.createElement("span");
+        span.textContent=w+" ";
+        let size=Math.min(10+freq[w]*2,50);
+        span.style.fontSize=size+"px";
+        span.style.marginRight="5px";
+        wordCloudDiv.appendChild(span);
+      }
+
+      // Frequency
+      const frequencyAnalysisDiv=document.getElementById("frequencyAnalysis");
+      let sorted=Object.keys(freq).sort((a,b)=>freq[b]-freq[a]);
+      frequencyAnalysisDiv.innerHTML="<ul>"+sorted.slice(0,10).map(x=>`<li>${x}: ${freq[x]}</li>`).join("")+"</ul>";
+
+      // Bar Chart
+      const barChartCanvas=document.getElementById("barChart");
+      if(barChartCanvas.chartInstance) barChartCanvas.chartInstance.destroy();
+      let topWords=sorted.slice(0,10);
+      let topFrequencies=topWords.map(x=>freq[x]);
+      if(typeof Chart!=="undefined"){
+        barChartCanvas.chartInstance=new Chart(barChartCanvas,{
+          type:"bar",
+          data:{
+            labels:topWords,
+            datasets:[{
+              label:"Word Frequency",
+              data:topFrequencies,
+              backgroundColor:"rgba(255,99,132,0.5)",
+              borderColor:"rgba(255,99,132,1)",
+              borderWidth:1
+            }]
+          },
+          options:{
+            scales:{ y:{beginAtZero:true} }
+          }
+        });
+      }
+    }
+    function exportVisualizerAsPNG(){
+      const vizPanel=document.getElementById("visualizerPanel");
+      html2canvas(vizPanel).then(canvas=>{
+        const link=document.createElement("a");
+        link.download="visualizer.png";
+        link.href=canvas.toDataURL("image/png");
+        link.click();
+      });
+    }
+
+    /* ==============================
+       SNIPPETS TAB
+       ============================== */
+    function updateSnippets(){
+      let snippets=JSON.parse(localStorage.getItem("chatSnippets")||"[]");
+      const snippetListDiv=document.getElementById("snippetList");
+      snippetListDiv.innerHTML="";
+      if(!snippets.length){
+        snippetListDiv.textContent="No snippets saved.";
+        return;
+      }
+      const ul=document.createElement("ul");
+      snippets.forEach((s,i)=>{
+        const li=document.createElement("li");
+        li.style.marginBottom="10px";
+        li.innerHTML=`<strong>${s.title}</strong><br>${s.content.replace(/\n/g,"<br>")}`;
+        const copyBtn=document.createElement("button");
+        copyBtn.textContent="Copy";
+        copyBtn.style.marginLeft="10px";
+        copyBtn.onclick=()=>{
+          navigator.clipboard.writeText(s.content).then(()=>{
+            alert("Snippet copied to clipboard!");
+          });
+        };
+        li.appendChild(copyBtn);
+        ul.appendChild(li);
+      });
+      snippetListDiv.appendChild(ul);
+    }
+    function saveSnippet(e){
+      e.preventDefault();
+      const t=document.getElementById("snippetTitle").value.trim();
+      const c=document.getElementById("snippetContent").value.trim();
+      if(!t||!c){
+        alert("Please provide both title and content.");
+        return;
+      }
+      let snippets=JSON.parse(localStorage.getItem("chatSnippets")||"[]");
+      snippets.push({title:t,content:c});
+      localStorage.setItem("chatSnippets",JSON.stringify(snippets));
+      alert("Snippet saved!");
+      document.getElementById("snippetForm").reset();
+      updateSnippets();
+    }
+
+    /* ==============================
+       GALAXY TAB
+       ============================== */
+    let galaxyScene, galaxyCamera, galaxyRenderer, galaxyControls, galaxyRaycaster, galaxyMouse;
+    let conversationMeshes=[];
+    let galaxyInited=false;
+    const galaxySteps=50; // how many force iterations
+
+    function updateGalaxy(){
+      if(!galaxyInited){
+        initGalaxy();
+        galaxyInited=true;
+      }
+    }
+
+    function initGalaxy(){
+      const container=document.getElementById("threeContainer");
+      if(!conversationData||!conversationData.length){
+        const infoPanel=document.getElementById("infoPanel");
+        infoPanel.style.display="block";
+        infoPanel.textContent="No conversation data loaded.";
+        return;
+      }
+      galaxyScene=new THREE.Scene();
+      galaxyCamera=new THREE.PerspectiveCamera(75,container.clientWidth/container.clientHeight,0.1,2000);
+      galaxyCamera.position.z=80;
+      galaxyRenderer=new THREE.WebGLRenderer({antialias:true});
+      galaxyRenderer.setSize(container.clientWidth,container.clientHeight);
+      container.appendChild(galaxyRenderer.domElement);
+
+      galaxyControls=new THREE.OrbitControls(galaxyCamera,galaxyRenderer.domElement);
+      galaxyControls.enableDamping=true;
+      galaxyControls.dampingFactor=0.1;
+
+      galaxyRaycaster=new THREE.Raycaster();
+      galaxyMouse=new THREE.Vector2();
+
+      const ambientLight=new THREE.AmbientLight(0xffffff,0.4);
+      galaxyScene.add(ambientLight);
+
+      createGalaxyForceLayout();
+
+      window.addEventListener("resize",onWindowResizeGalaxy);
+      container.addEventListener("click",onGalaxyClick);
+
+      animateGalaxy();
+    }
+
+    /**
+     * Create a naive force-based layout in memory:
+     * - Each conversation is a point w/ random initial position
+     * - We do repeated repulsion among close points
+     * - We add a gentle force to pull them toward the center
+     * - Then we create the spheres in Three.js
+     */
+    function createGalaxyForceLayout(){
+      conversationMeshes.forEach(m=>galaxyScene.remove(m));
+      conversationMeshes=[];
+
+      // 1) Initialize random positions
+      let points=conversationData.map((conv,i)=>{
+        // If cluster is known, color by cluster
+        // Otherwise random
+        let color="#3498db";
+        if(typeof conv.cluster!=="undefined"){
+          const clusterColors=["#f39c12","#2ecc71","#3498db","#9b59b6","#e74c3c","#e67e22","#1abc9c","#bdc3c7"];
+          color=clusterColors[conv.cluster % clusterColors.length];
+        } else {
+          // random color
+          color="#"+Math.floor(Math.random()*16777215).toString(16);
+        }
+        // random initial pos
+        let px=(Math.random()-0.5)*100;
+        let py=(Math.random()-0.5)*100;
+        let pz=(Math.random()-0.5)*100;
+        return {
+          index:i,
+          title: conv.title||(`Conversation #${i+1}`),
+          mapping: conv.mapping||null,
+          color,
+          x:px,
+          y:py,
+          z:pz,
+          vx:0,vy:0,vz:0 // velocity for the iteration
+        };
+      });
+
+      // 2) Force simulation
+      const repulsionRadius=15;
+      const repulsionStrength=0.02;
+      const centerPull=0.001;
+      for(let step=0; step<galaxySteps; step++){
+        // pairwise repulsion
+        for(let i=0; i<points.length; i++){
+          for(let j=i+1; j<points.length; j++){
+            let dx=points[j].x-points[i].x;
+            let dy=points[j].y-points[i].y;
+            let dz=points[j].z-points[i].z;
+            let dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
+            if(dist<repulsionRadius&&dist>0){
+              // push them apart
+              let force=(repulsionRadius-dist)*repulsionStrength;
+              dx/=dist;dy/=dist;dz/=dist; 
+              points[i].vx-=dx*force;
+              points[i].vy-=dy*force;
+              points[i].vz-=dz*force;
+              points[j].vx+=dx*force;
+              points[j].vy+=dy*force;
+              points[j].vz+=dz*force;
+            }
+          }
+        }
+        // center pull
+        for(let i=0; i<points.length; i++){
+          points[i].vx-=points[i].x*centerPull;
+          points[i].vy-=points[i].y*centerPull;
+          points[i].vz-=points[i].z*centerPull;
+        }
+        // apply velocity
+        for(let i=0; i<points.length; i++){
+          points[i].x+=points[i].vx;
+          points[i].y+=points[i].vy;
+          points[i].z+=points[i].vz;
+          // a bit of damping
+          points[i].vx*=0.9;
+          points[i].vy*=0.9;
+          points[i].vz*=0.9;
+        }
+      }
+
+      // 3) Create spheres in Three.js
+      points.forEach(pt=>{
+        const geometry=new THREE.SphereGeometry(1.2,12,12);
+        const material=new THREE.MeshBasicMaterial({color:pt.color});
+        const mesh=new THREE.Mesh(geometry,material);
+        mesh.position.set(pt.x,pt.y,pt.z);
+        mesh.userData={
+          index:pt.index,
+          title:pt.title
+        };
+        galaxyScene.add(mesh);
+        conversationMeshes.push(mesh);
+      });
+    }
+
+    function onWindowResizeGalaxy(){
+      const container=document.getElementById("threeContainer");
+      if(!galaxyCamera||!galaxyRenderer)return;
+      galaxyCamera.aspect=container.clientWidth/container.clientHeight;
+      galaxyCamera.updateProjectionMatrix();
+      galaxyRenderer.setSize(container.clientWidth,container.clientHeight);
+    }
+
+    function onGalaxyClick(e){
+      e.preventDefault();
+      const container=document.getElementById("threeContainer");
+      const rect=container.getBoundingClientRect();
+      galaxyMouse.x=((e.clientX-rect.left)/rect.width)*2-1;
+      galaxyMouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
+
+      galaxyRaycaster.setFromCamera(galaxyMouse,galaxyCamera);
+      const intersects=galaxyRaycaster.intersectObjects(conversationMeshes);
+      if(intersects.length>0){
+        const hit=intersects[0].object;
+        const infoPanel=document.getElementById("infoPanel");
+        infoPanel.style.display="block";
+        infoPanel.textContent=`Clicked: ${hit.userData.title}`;
+        showGalaxyModal(hit.userData.index);
+      }
+    }
+
+    function animateGalaxy(){
+      requestAnimationFrame(animateGalaxy);
+      if(galaxyControls) galaxyControls.update();
+      if(galaxyRenderer&&galaxyScene&&galaxyCamera){
+        galaxyRenderer.render(galaxyScene,galaxyCamera);
+      }
+    }
+
+    /* ============= GALAXY MODAL ============= */
+    function showGalaxyModal(convIndex){
+      const modal=document.getElementById("galaxyModal");
+      const titleEl=document.getElementById("galaxyModalTitle");
+      const bodyEl=document.getElementById("galaxyModalBody");
+
+      const convObj=conversationData[convIndex];
+      const convTitle=convObj.title||("Conversation #"+(convIndex+1));
+      titleEl.textContent=convTitle;
+
+      // BFS gather
+      let convMessages=[];
+      if(convObj.mapping){
+        convMessages=gatherMessages(convObj.mapping);
+      }
+      bodyEl.innerHTML="";
+      convMessages.forEach((m,i)=>{
+        const role=m.author?.role||"unknown";
+        const text=(m.content?.parts||[]).join(" ");
+        const div=document.createElement("div");
+        div.style.marginBottom="8px";
+        div.innerHTML=`<strong>${role.toUpperCase()}:</strong> ${text}`;
+        bodyEl.appendChild(div);
+      });
+
+      modal.style.display="flex";
+      modal.style.alignItems="center";
+      modal.style.justifyContent="center";
+    }
+    function closeGalaxyModal(){
+      document.getElementById("galaxyModal").style.display="none";
+    }
+  </script>
+</body>
+</html>
