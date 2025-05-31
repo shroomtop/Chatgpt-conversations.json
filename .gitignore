@@ -1,0 +1,17 @@
+# HTML and static site build artifacts
+*.log
+*.tmp
+*.cache
+*.bak
+.DS_Store
+node_modules/
+dist/
+build/
+.env
+# VS Code & JetBrains
+.vscode/
+.idea/
+# System files
+Thumbs.db
+# JSON data backups
+*.json.bak
