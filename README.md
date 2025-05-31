@@ -1,4 +1,3 @@
-# Chatgpt-conversations.json
 
 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/shroomtop/Chatgpt-conversations.json)
 [![License](https://img.shields.io/github/license/shroomtop/Chatgpt-conversations.json)](LICENSE)
